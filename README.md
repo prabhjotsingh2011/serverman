@@ -4,6 +4,13 @@ A simple CLI tool to manage and connect to multiple SSH servers (AWS, VPS, etc.)
 
 ## 🚀 Installation
 
+### 1. Install dependencies
+`serverman` needs `jq` (for JSON parsing) and optionally `sshpass` (for password-based logins).  
+
+**Debian/Ubuntu**
+```bash
+sudo apt-get update
+sudo apt-get install -y jq sshpass
 Run this one-liner:
 
 ```bash
