@@ -1,0 +1,88 @@
+#!/bin/bash
+# Simple Server Manager CLI
+# Dependencies: jq, sshpass (for password-based SSH)
+
+CONFIG_FILE="$HOME/.servers.json"
+
+init_config() {
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo "{}" > "$CONFIG_FILE"
+  fi
+}
+
+add_server() {
+  echo "➕ Adding new server configuration"
+  read -p "Alias (short name): " alias
+  read -p "Host (IP or domain): " host
+  read -p "User (e.g., ubuntu, ec2-user, root): " user
+  read -p "Connect with PEM file? (y/n): " pemchoice
+
+  pem=""
+  password=""
+  if [ "$pemchoice" == "y" ]; then
+    read -p "PEM file path: " pem
+  else
+    read -sp "Password: " password
+    echo
+  fi
+
+  read -p "Needs sudo password? (y/n): " sudoc
+  needs_sudo=false
+  [ "$sudoc" == "y" ] && needs_sudo=true
+
+  tmp=$(mktemp)
+  jq ". + {\"$alias\": {\"host\": \"$host\", \"user\": \"$user\", \"pem\": \"$pem\", \"password\": \"$password\", \"needs_sudo\": $needs_sudo}}" "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+  echo "✅ Saved configuration for alias '$alias'"
+}
+
+connect_server() {
+  alias=$1
+  if [ -z "$alias" ]; then
+    echo "⚠️ Usage: serverman connect <alias>"
+    exit 1
+  fi
+
+  host=$(jq -r ".$alias.host" "$CONFIG_FILE")
+  user=$(jq -r ".$alias.user" "$CONFIG_FILE")
+  pem=$(jq -r ".$alias.pem" "$CONFIG_FILE")
+  password=$(jq -r ".$alias.password" "$CONFIG_FILE")
+
+  if [ "$host" == "null" ]; then
+    echo "❌ No server found with alias '$alias'"
+    exit 1
+  fi
+
+  echo "🔗 Connecting to $alias ($user@$host)..."
+  if [ "$pem" != "null" ] && [ -n "$pem" ]; then
+    ssh -i "$pem" "$user@$host"
+  else
+    sshpass -p "$password" ssh "$user@$host"
+  fi
+}
+
+list_servers() {
+  echo "📋 Saved servers:"
+  jq 'keys' "$CONFIG_FILE"
+}
+
+remove_server() {
+  alias=$1
+  if [ -z "$alias" ]; then
+    echo "⚠️ Usage: serverman remove <alias>"
+    exit 1
+  fi
+  tmp=$(mktemp)
+  jq "del(.\"$alias\")" "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+  echo "🗑️ Removed server '$alias'"
+}
+
+init_config
+
+case "$1" in
+  add) add_server ;;
+  connect) connect_server "$2" ;;
+  list) list_servers ;;
+  remove) remove_server "$2" ;;
+  *) echo "Usage: serverman {add|connect <alias>|list|remove <alias>}" ;;
+esac
+
