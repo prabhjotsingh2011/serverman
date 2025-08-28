@@ -54,11 +54,18 @@ connect_server() {
 
   echo "🔗 Connecting to $alias ($user@$host)..."
   if [ "$pem" != "null" ] && [ -n "$pem" ]; then
-    ssh -i "$pem" "$user@$host"
+    ssh -i "$pem" "$user@$host" 2>ssh_error.log
+    if grep -q "UNPROTECTED PRIVATE KEY FILE" ssh_error.log; then
+      echo "⚠️ SSH refused the PEM file due to permissions."
+      echo "👉 Run: chmod 600 \"$pem\""
+      echo "👉 Or re-add the server so script auto-fixes permissions."
+    fi
+    rm -f ssh_error.log
   else
     sshpass -p "$password" ssh "$user@$host"
   fi
 }
+
 
 list_servers() {
   echo "📋 Saved servers:"
