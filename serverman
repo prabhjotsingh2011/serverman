@@ -1,8 +1,74 @@
 #!/bin/bash
 # Simple Server Manager CLI
-# Dependencies: jq, sshpass (for password-based SSH)
+# Dependencies: jq, sshpass (for password-based SSH),fzf 
 
 CONFIG_FILE="$HOME/.servers.json"
+
+
+
+# 🔹 Detect package manager (apt, yum, dnf, brew, pacman)
+detect_package_manager() {
+  if command -v apt >/dev/null 2>&1; then
+    echo "apt"
+  elif command -v yum >/dev/null 2>&1; then
+    echo "yum"
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "dnf"
+  elif command -v pacman >/dev/null 2>&1; then
+    echo "pacman"
+  elif command -v brew >/dev/null 2>&1; then
+    echo "brew"
+  else
+    echo "unknown"
+  fi
+}
+
+# 🔹 Check & install missing dependencies
+check_dependencies() {
+  local deps=("jq" "sshpass" "fzf")
+  local missing=()
+  for dep in "${deps[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      missing+=("$dep")
+    fi
+  done
+
+  if [ ${#missing[@]} -eq 0 ]; then
+    return
+  fi
+
+  echo "⚠️ Missing dependencies: ${missing[*]}"
+  pkg_manager=$(detect_package_manager)
+
+  case "$pkg_manager" in
+    apt)
+      echo "📦 Installing via apt..."
+      sudo apt update && sudo apt install -y "${missing[@]}"
+      ;;
+    yum)
+      echo "📦 Installing via yum..."
+      sudo yum install -y "${missing[@]}"
+      ;;
+    dnf)
+      echo "📦 Installing via dnf..."
+      sudo dnf install -y "${missing[@]}"
+      ;;
+    pacman)
+      echo "📦 Installing via pacman..."
+      sudo pacman -Sy --noconfirm "${missing[@]}"
+      ;;
+    brew)
+      echo "📦 Installing via Homebrew..."
+      brew install "${missing[@]}"
+      ;;
+    *)
+      echo "❌ Could not detect package manager. Please install manually: ${missing[*]}"
+      exit 1
+      ;;
+  esac
+}
+
+
 
 init_config() {
   if [ ! -f "$CONFIG_FILE" ]; then
@@ -83,6 +149,16 @@ remove_server() {
   echo "🗑️ Removed server '$alias'"
 }
 
+interactive_menu() {
+  selected=$(list_servers | fzf --prompt="Select server: " --height=10 --reverse)
+  if [ -n "$selected" ]; then
+    connect_server "$selected"
+  else
+    echo "❌ No server selected"
+  fi
+}
+
+check_dependencies
 init_config
 
 case "$1" in
@@ -90,6 +166,7 @@ case "$1" in
   connect) connect_server "$2" ;;
   list) list_servers ;;
   remove) remove_server "$2" ;;
+  "" ) interactive_menu ;;   # run interactive menu if no args
   *) echo "Usage: serverman {add|connect <alias>|list|remove <alias>}" ;;
 esac
 
